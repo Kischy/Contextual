@@ -3,4 +3,7 @@ BasedOnStyle: Google
 DerivePointerAlignment: false
 PointerAlignment: Left
 QualifierAlignment: Left
+IndentWidth: 2
+UseTab: Never
+
 
