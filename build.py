@@ -23,11 +23,7 @@ def run_command(command, cwd=None):
             cwd=cwd,
             check=True,
             shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
         )
-        print(process.stdout)
         return True
     except subprocess.CalledProcessError as e:
         print(f"Error executing command: {command}")
