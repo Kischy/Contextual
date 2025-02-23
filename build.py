@@ -1,137 +1,88 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import subprocess
 import sys
-import shutil
-import argparse
 from pathlib import Path
-from enum import Enum
 
-class BuildType(Enum):
-    DEBUG = "Debug"
-    RELEASE = "Release"
+project_dir = Path(__file__).parent.absolute()
+meson_sub_dir = "meson-src"
 
-    def __str__(self):
-        return self.value
-
-def run_command(command, cwd=None):
-    """Run a shell command and handle errors"""
+def run_command(cmd, cwd=None):
+    """Run a command and handle errors"""
     try:
-        process = subprocess.run(
-            command,
-            cwd=cwd,
-            check=True,
-            shell=True,
-        )
-        return True
+        print(f"Run command: {' '.join(cmd)} in {cwd}")
+        subprocess.run(cmd, check=True, cwd=cwd)
     except subprocess.CalledProcessError as e:
-        print(f"Error executing command: {command}")
-        print(f"Error output: {e.stderr}")
-        return False
+        print(f"Error running command: {' '.join(cmd)}")
+        print(f"Error: {e}")
+        sys.exit(1)
 
-def clean_build_directory(script_dir, build_type):
-    """Clean the build directory for specific build type"""
-    build_dir = script_dir / "build" / str(build_type)
-    if build_dir.exists():
-        print(f"Cleaning build directory: {build_dir}")
-        shutil.rmtree(build_dir)
-    
-    # Clean Conan-generated files in the root
-    for file in script_dir.glob("*.ini"):
-        file.unlink()
-    for file in script_dir.glob("*.pc"):
-        file.unlink()
+def setup_build_directory(build_type):
+    """Create and setup build directory"""
+    build_dir = Path(f"build/{build_type}")
+    build_dir.mkdir(exist_ok=True, parents=True)
+    return build_dir
 
-def get_conan_profile(build_type):
-    """Generate Conan profile settings based on build type"""
-    if build_type == BuildType.DEBUG:
-        return [
-            "-s", "build_type=Debug",
-            "-s:h", "build_type=Debug"
-        ]
-    else:
-        return [
-            "-s", "build_type=Release",
-            "-s:h", "build_type=Release"
-        ]
+def install_dependencies(build_dir, build_type):
+    """Install dependencies using Conan"""
+    print(f"Installing dependencies with Conan ({build_type} build)...")
+    cmd = [
+        "conan", "install", ".",
+        "--output-folder", str(build_dir),
+        "--build=missing",
+        "-s", f"build_type={build_type.capitalize()}"
+    ]
+    run_command(cmd)
 
-def build_project(build_type=BuildType.RELEASE, rebuild=False):
-    """Build the project using Conan and Meson"""
-    
-    # Get the script's directory
-    script_dir = Path(__file__).parent.absolute()
-    
-    # If rebuilding, clean first
-    if rebuild:
-        clean_build_directory(script_dir, build_type)
-
-    # Create build directory if it doesn't exist
-    build_dir = script_dir / "build" / str(build_type)
-    build_dir.mkdir(parents=True, exist_ok=True)
-
-    # Get Conan settings for the build type
-    conan_settings = get_conan_profile(build_type)
-    
-    # Run Conan install with appropriate settings
-    print(f"\nRunning Conan install for {build_type}...")
-    conan_cmd = ["conan", "install", ".", "--output-folder=.", "--build=missing"]
-    conan_cmd.extend(conan_settings)
-    if not run_command(" ".join(conan_cmd), script_dir):
-        return False
-
-    # Run Meson setup
-    print(f"\nRunning Meson setup for {build_type}...")
-    generators_path = build_dir / "generators" / "conan_meson_native.ini"
-    
-    meson_options = []
-    if build_type == BuildType.DEBUG:
-        meson_options.extend([
-            "--buildtype=debug",
-            "-Ddebug=true",
-            "-Doptimization=0"
-        ])
-    else:
-        meson_options.extend([
-            "--buildtype=release",
-            "-Ddebug=false",
-            "-Doptimization=3"
-        ])
-
-    meson_command = [
+def configure_meson(build_dir, build_type):
+    """Configure project with Meson"""
+    print("Configuring with Meson...")
+    cmd = [
         "meson", "setup",
         "--reconfigure",
-        "--cross-file", str(generators_path),
-        *meson_options,
-        str(build_dir)
+        "--buildtype", build_type.lower(),
+        "--native-file", "conan_meson_native.ini" ,
+        str(project_dir),meson_sub_dir
     ]
-    
-    if not run_command(" ".join(meson_command), script_dir):
-        return False
+    run_command(cmd, cwd=build_dir)
 
-    # Run Ninja build
-    print(f"\nRunning Ninja build for {build_type}...")
-    if not run_command("ninja", build_dir):
-        return False
+def build_project(build_dir):
+    """Build the project"""
+    print("Building the project...")
+    run_command(["meson", "compile", "-C", meson_sub_dir], cwd=build_dir)
 
-    # Run tests
-    print(f"\nRunning tests for {build_type}...")
-    if not run_command("ninja test", build_dir):
-        return False
-
-    print(f"\n{build_type} build completed successfully!")
-    return True
+def test_project(build_dir):
+    """TEst the project"""
+    print("Testing the project...")
+    run_command(["meson", "test", "-C", meson_sub_dir], cwd=build_dir)
 
 def main():
-    parser = argparse.ArgumentParser(description='Build script for the project')
-    parser.add_argument('--rebuild', action='store_true', 
-                      help='Clean and rebuild everything')
-    parser.add_argument('--type', type=BuildType, choices=list(BuildType), 
-                      default=BuildType.RELEASE,
-                      help='Build type (Debug or Release)')
+    parser = argparse.ArgumentParser(description="Build script for Conan/Meson project")
+    parser.add_argument(
+        "--build-type",
+        choices=["Debug", "Release"],
+        default="Debug",
+        help="Build type (Debug or Release)"
+    )
     args = parser.parse_args()
 
-    return 0 if build_project(build_type=args.type, rebuild=args.rebuild) else 1
+    # Setup build directory
+    build_dir = setup_build_directory(args.build_type)
+
+    # Install dependencies
+    install_dependencies(build_dir, args.build_type)
+
+    # Configure and build
+    configure_meson(build_dir, args.build_type)
+    build_project(build_dir)
+
+    # Test project
+    test_project(build_dir)
+
+
+    print("Build completed successfully!")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

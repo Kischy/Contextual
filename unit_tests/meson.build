@@ -1,9 +1,10 @@
 gtest_dep = dependency('gtest',
                       main: true,
-                      fallback: ['gtest', 'gtest_dep'],
+                      method : 'pkg-config',
                       required: true)
+                      
 gmock_dep = dependency('gmock', 
-                      fallback: ['gmock', 'gmock_dep'],
+                      method : 'pkg-config',
                       required: true)
 
 test_exe = executable(

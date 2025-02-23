@@ -10,6 +10,3 @@ imgui/*:shared=False
 [generators]
 PkgConfigDeps
 MesonToolchain
-
-[layout]
-cmake_layout
