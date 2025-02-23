@@ -1,8 +1,11 @@
 [requires]
 gtest/1.15.0
+imgui/1.91.5
 
 [options]
 gtest/*:build_gmock=True
+imgui/*:fPIC=True
+imgui/*:shared=False
 
 [generators]
 PkgConfigDeps
